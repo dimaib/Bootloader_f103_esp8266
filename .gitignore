@@ -1,0 +1,56 @@
+# build ARM
+*.d
+*.lst
+*.o
+*.map
+*.hex
+*.bin
+*.elf
+
+# ============= Visual Studio (C/C++) =============
+# Временные файлы и папки сборки
+[Bb]in/
+[Oo]bj/
+x64/
+x86/
+*.pdb
+*.ilk
+*.exp
+*.idb
+*.iobj
+*.ipdb
+*.pgd
+*.pch
+*.vspscc
+*.vssscc
+*.exe
+
+# ============= Общие файлы =============
+*.o
+*.obj
+*.exe
+*.out
+*.a
+*.lib
+*.dll
+*.so
+*.bin
+*.hex
+*.elf
+*.map
+*.lst
+*.log
+*.su
+*.stackdump
+*.swp
+*~
+*.bak
+*.tmp
+*.user
+*.cache
+.DS_Store
+Thumbs.db
+
+# Visual Studio временные файлы
+.vs/
+*.ipch
