@@ -9,6 +9,10 @@ esp_t esp={
     .connect_status=0,
     .getFileMode=0,
 	.timeoutRX=0,
+	.param.server="",
+	.param.port="",
+	.param.apName="",
+	.param.apPass=""
 };
 
 void esp_reset()

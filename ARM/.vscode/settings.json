@@ -5,7 +5,10 @@
         "stm32f103xb.h": "c",
         "uart.h": "c",
         "sysfunc.h": "c",
-        "segger_rtt.h": "c"
+        "segger_rtt.h": "c",
+        "flash.h": "c",
+        "string.h": "c",
+        "esp.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

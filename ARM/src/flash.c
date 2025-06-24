@@ -1,17 +1,13 @@
 #include "main.h"
 
-uint8_t __dump[]={
-	0x14, 0x0C, 0xBC, 0xE8, 0x0F, 0x00, 0xAE, 0xE8, 
-	0x0F, 0x00, 0xDC, 0xF8, 0x00, 0x30, 0xCE, 0xF8, 
-	0x00, 0x30, 0x00, 0x21, 0x68, 0x46, 0x03, 0xF0, 
-	0x88, 0xF8, 0x06, 0x4B, 0x18, 0x60, 0x0A, 0xB0
-};
-
-uint8_t dump[]="111 read/write in 55555 memory!";
 uint32_t tmpBuffer32[256];
 uint8_t tmpBuffer8[1024];
 
-void Internal_Flash_Write(uint8_t* data, uint32_t address, uint32_t size) {
+uint8_t flashTmp[STR_MAX_SIZE_IN_FLASH*4];						// массив для чтения и записи настроек во flash-память
+//flashparam_t flashParam;										// в этой структуре храним настройки из флеш памяти
+
+void Internal_Flash_Write(uint8_t* data, uint32_t address, uint32_t size)
+{
 	unsigned int i;
 
 	while (FLASH->SR & FLASH_SR_BSY);
@@ -52,10 +48,70 @@ void flashWrite(uint32_t address, uint8_t *data, uint32_t size, uint8_t erase)
 
 void flashRead(uint32_t address, uint8_t *readBuffer, uint32_t size)
 {
-	memset(tmpBuffer8, 0x00, 1024); memset(tmpBuffer32, 0x00, 256);
+	memset(tmpBuffer8, 0x00, sizeof(tmpBuffer8)); memset(tmpBuffer32, 0x00, sizeof(tmpBuffer32));
 	for(uint32_t i=0; i<size; i+=4){
 		tmpBuffer32[i/4] = *(__IO uint32_t*)(address+i);
 	}
 	memcpy(readBuffer, tmpBuffer32, size);
     //printf("%s\r\n", tmpBuffer8);
+}
+
+//////////////////////////////////////////////////
+//												//
+//////////////////////////////////////////////////
+
+uint16_t getCRC(uint8_t *buff, uint32_t size)
+{
+	uint16_t base=0xffff;
+	while(size--) base-=(*buff++);
+	return base;
+}
+
+uint8_t setFlashParam(uint8_t *param, flashAddr_t addrParam, uint8_t size)
+{
+	// читаем область флеш-памяти, где храняться настройки
+	flashRead(FLASH_CONF_PAGE*FLASH_PAGE_SIZE, flashTmp, STR_MAX_SIZE_IN_FLASH*4);
+	
+	// определяем, требуется ли стирание страницы
+	// если в диапозоне адресов от addrParam до addrParam+size, будет хотя бы один байт, который не равен 0xff,
+	// то стираем страницу, иначе стирание не требуется
+	volatile uint8_t erase=0;
+	(void)erase;
+	for(uint32_t i=0; i<STR_MAX_SIZE_IN_FLASH; i++){
+		if(flashTmp[addrParam+i]!=0xff){erase=1; break;}
+	}
+	// подготавливаем массив для записи во флеш-память
+	memset(&flashTmp[addrParam], 0xFF, STR_MAX_SIZE_IN_FLASH);					// устанавливаем все байты в 0xff
+	memcpy(&flashTmp[addrParam], param, size);									// копируем новые данные в массив
+	flashWrite(FLASH_CONF_ADDR, flashTmp, STR_MAX_SIZE_IN_FLASH*4, 1);			// записываем все настройки целиком. 
+	// проверка записанных данных
+	uint16_t crc=getCRC(flashTmp, STR_MAX_SIZE_IN_FLASH*4);						// считаем crc16 записанного массива 
+	flashRead(FLASH_CONF_ADDR, flashTmp, STR_MAX_SIZE_IN_FLASH*4);				// считываем ещё раз все настройки, что бы проверить корректность записи
+	return (crc==getCRC(flashTmp, STR_MAX_SIZE_IN_FLASH*4))?0:1;				// если суммы равны, то возвращаем 0, иначе 1
+}
+
+uint8_t searchChar(uint8_t *buff, uint8_t _char, uint16_t size)
+{
+	for(uint16_t i=0; i<size; i++)
+		if(buff[i]==_char) return i+1;
+	return 0;
+}
+
+void getFlashParam()
+{
+	uint8_t size=0;
+	memset(flashTmp, 0x00, STR_MAX_SIZE_IN_FLASH*4);
+	flashRead(FLASH_CONF_ADDR, flashTmp, STR_MAX_SIZE_IN_FLASH*4);
+
+	size=searchChar(&flashTmp[FADDR_SERVER], 0xff, STR_MAX_SIZE_IN_FLASH);
+	if(size) memcpy(esp.param.server, &flashTmp[FADDR_SERVER], size-1);
+
+	size=searchChar(&flashTmp[FADDR_PORT], 0xff, STR_MAX_SIZE_IN_FLASH);
+	if(size) memcpy(esp.param.port, &flashTmp[FADDR_PORT], size-1);
+
+	size=searchChar(&flashTmp[FADDR_AP_NAME], 0xff, STR_MAX_SIZE_IN_FLASH);
+	if(size) memcpy(esp.param.apName, &flashTmp[FADDR_AP_NAME], size-1);
+
+	size=searchChar(&flashTmp[FADDR_AP_PASS], 0xff, STR_MAX_SIZE_IN_FLASH);
+	if(size) memcpy(esp.param.apPass, &flashTmp[FADDR_AP_PASS], size-1);
 }

@@ -58,6 +58,10 @@ int main()
 	uint16_t packetNumPre=0xffff;
 	uint32_t eTimer[]={0,0,0};
 	uint32_t shiftAddr=0;
+
+	// инициализируем структуру настроек для wifi. Загружаем данные из flash
+	getFlashParam();
+
 	while(1){
 		if (elapsedTimer(&eTimer[0], 1500)) 			{GPIOC->ODR&=~(1<<13); eTimer[2]=1;}
 		if (eTimer[2] && elapsedTimer(&eTimer[1], 5)) 	{GPIOC->ODR|=(1<<13); eTimer[2]=0;}
@@ -65,18 +69,7 @@ int main()
 		delay_ms(1);
 		if(_go){
 			_go=0;
-			flashWrite(FLASH_CONF_ADDR+FADDR_SERVER, test[0], 128, 1);
-			flashWrite(FLASH_CONF_ADDR+FADDR_PORT, test[1], 128, 0);
-			flashWrite(FLASH_CONF_ADDR+FADDR_AP_NAME, test[2], 128, 0);
-			flashWrite(FLASH_CONF_ADDR+FADDR_AP_PASS, test[3], 128, 0);
-
-			flashRead(FLASH_CONF_PAGE*FLASH_PAGE_SIZE+FADDR_SERVER, _test[0], 128);
-			flashRead(FLASH_CONF_PAGE*FLASH_PAGE_SIZE+FADDR_PORT, _test[1], 128);
-			flashRead(FLASH_CONF_PAGE*FLASH_PAGE_SIZE+FADDR_AP_NAME, _test[2], 128);
-			flashRead(FLASH_CONF_PAGE*FLASH_PAGE_SIZE+FADDR_AP_PASS, _test[3], 128);
-			printf("%s\r\n%s\r\n%s\r\n%s\r\n", _test[0], _test[1], _test[2], _test[3]);
-			
-			printf("ok!\r\n");
+			// тестовый код для запуска из отладчика, путём установки глобальной переменной _go в 1
 		}
 		if(esp.getFileMode) esp.timeoutRX++;
 		if(esp.timeoutRX>=7000){
@@ -90,19 +83,38 @@ int main()
 			esp.dataRDY=0;
 			// вывод всей принятой информации из uart
 			//printf("size: %d[%d]: %s\r\n", esp.rx_index, getDataSize(esp.rx_buffer), esp.rx_buffer);
-			if(strstr((const char*)esp.rx_buffer, "0,CONNECT")) esp.connect_status=1;
-			if(strstr((const char*)esp.rx_buffer, "0,CLOSED")) esp.connect_status=0;
+			if(strstr((const char*)esp.rx_buffer, "0,CONNECT")) {esp.connect_status=1; memset(esp.rx_buffer, 0x00, esp.rx_index); esp.rx_index=0;}
+			if(strstr((const char*)esp.rx_buffer, "0,CLOSED")) 	{esp.connect_status=0; memset(esp.rx_buffer, 0x00, esp.rx_index); esp.rx_index=0;}
 			if(strstr((const char*)esp.rx_buffer, "+IPD,0")){
+				uint16_t size=getDataSize(esp.rx_buffer);
+				uint8_t dataPos=searchChar(esp.rx_buffer, ':', ESP_BUF_SIZE);
 				if(!esp.getFileMode){
 					if(strstr((const char*)esp.rx_buffer, "start_transmit")) {
 						printf("begin recive file..\r\n");
 						sendToClient((uint8_t*)"R", 1);
 						esp.getFileMode=1;
-						memset(esp.rx_buffer, 0x00, esp.rx_index); esp.rx_index=0;
+						//memset(esp.rx_buffer, 0x00, esp.rx_index); esp.rx_index=0;
+					}else if(strstr((const char*)esp.rx_buffer, "setServer=")){
+						memcpy(esp.param.server, &esp.rx_buffer[dataPos+10], size-10);
+						setFlashParam(esp.param.server, FADDR_SERVER, strlen((char*)esp.param.server));
+						printf("setServer.. %d\r\n", size);
+					}else if(strstr((const char*)esp.rx_buffer, "setPort=")){
+						memcpy(esp.param.port, &esp.rx_buffer[dataPos+8], size-8);
+						setFlashParam(esp.param.port, FADDR_PORT, strlen((char*)esp.param.port));
+						printf("setPort..\r\n");
+					}else if(strstr((const char*)esp.rx_buffer, "setAPN=")){
+						memcpy(esp.param.apName, &esp.rx_buffer[dataPos+7], size-7);
+						setFlashParam(esp.param.apName, FADDR_AP_NAME, strlen((char*)esp.param.apName));
+						printf("setAPN..\r\n");
+					}else if(strstr((const char*)esp.rx_buffer, "setAPP=")){
+						memcpy(esp.param.apPass, &esp.rx_buffer[dataPos+7], size-7);
+						setFlashParam(esp.param.apPass, FADDR_AP_PASS, strlen((char*)esp.param.apPass));
+						printf("setAPP..\r\n");
 					}
+					memset(esp.rx_buffer, 0x00, esp.rx_index); esp.rx_index=0;
 				}else{
 					uint16_t sum=0;
-					uint16_t size=getDataSize(esp.rx_buffer);
+					//uint16_t size=getDataSize(esp.rx_buffer);
 					if(strstr((const char*)esp.rx_buffer, "finish_transmit")){
 						printf("file recived\r\n");
 						esp.getFileMode=0;
@@ -149,3 +161,10 @@ int main()
 		}
 	}
 }
+
+// функции заглушки. Убираем не нужные варнинги при компиляции..
+void _fstat_r() {}
+void _close_r() {}
+void _isatty_r(){}
+void _lseek_r() {}
+void _read_r()  {}
